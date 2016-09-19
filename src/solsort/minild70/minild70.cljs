@@ -15,15 +15,16 @@
    [clojure.string :as string :refer [replace split blank?]]
    [cljs.core.async :refer [>! <! chan put! take! timeout close! pipe]]))
 
+(def turn-time 150)
 (def maps
   [["   x   "
     "  v   <"
     "       "
-    "  bb   "
+    "  b    "
     "  b    "
     "bbb>   "
     "       "
-    "  bbbb "
+    "  b bb "
     "     b "
     "   o   "]])
 (defn load-map [n]
@@ -33,11 +34,10 @@
            x (range 7)
            symb (aget (nth (nth maps n) y) x)]
        (let [add #(swap! level conj (into % {:id [x y] :pos [x y]}))]
-         (log 'here x y symb)
          (case symb
            "b" (add {:type :block})
-           ">" (add {:type :enemy0 :direction :right})
-           "<" (add {:type :enemy0 :direction :left})
+           ">" (add {:type :glider-lr :direction :right})
+           "<" (add {:type :glider-lr :direction :left})
            "^" (add {:type :enemy0 :direction :up})
            "v" (add {:type :enemy0 :direction :down})
            "o" (add {:type :player})
@@ -47,10 +47,13 @@
 (load-map 0)
 (log (db [:level]))
 (load-style!
- {:body
+ {:img
+  {:transition-timing-function "linear"
+   :transition (str "all " turn-time "ms")}
+  :body
   {:background :black}})
-(defn player-pos []
-  (:pos (first (filter #(= :player (:type %)) (db [:level])))))
+(defn goal-pos [] (:pos (first (filter #(= :goal (:type %)) (db [:level])))))
+(defn player-pos [] (:pos (first (filter #(= :player (:type %)) (db [:level])))))
 (db! [:path] [(player-pos)])
 
 (defn v- [[x0 y0] [x1 y1]] [(- x0 x1) (- y0 y1)])
@@ -81,6 +84,7 @@
                    (first next)
                    (rest next))))))
 
+(declare move)
 (defn move-towards [pos]
   (loop []
     (let [path (db [:path] [[3 7]])
@@ -101,14 +105,53 @@
                    (filter #(= :block (:type %)) (db [:level])))))
         (db! [:path] path)
         (when (not= pos (last (db [:path])))
-          (recur))))))
+          (recur)))))
+  (when (and (not (db [:moving]))
+             (= (goal-pos) (last (db [:path]))))
+    (db! [:moving] true)
+    (move))
+  )
+
+(defn move []
+  (db!
+   [:level]
+   (for [o (db [:level])]
+     (case (:type o)
+       :enemy0 o
+       :glider-lr 
+       (if (= :left (:direction o))
+         (assoc o :pos (v+ (:pos o) [-1 0]))
+         (assoc o :pos (v+ (:pos o) [1 0]))
+         )
+       :block o
+       :goal o
+       :player
+       (do
+         (log 'player
+              (count (db [:path]))
+              (get o :time 1)
+              (db [:moving]))
+         (when (< (count (db [:path]))
+                  (get o :time 1))
+           (db-async! [:moving] false))
+         (log 'player
+              (count (db [:path]))
+              (get o :time 1)
+              (db [:moving]))
+         (into o
+              {:time (inc (get o :time 1))
+               :pos (nth (db [:path]) (get o :time 1) (goal-pos))})))))
+  (if (db [:moving])
+    (js/setTimeout move turn-time)
+    (js/setTimeout #(load-map 0) (* 4 turn-time)))
+  )
 
 (defn main []
   (let [scale-y (/ js/innerHeight 160)
         scale-x (min (* 1.2 scale-y) (/ js/innerWidth 112))
-        handle-touch #(move-towards
-                       [(min 7 (bit-or 0 (/ (.-clientX %) scale-x 16)))
-                        (min 10 (bit-or 0 (/ (.-clientY %) scale-y 16)))])]
+        handle-touch #(when-not (db [:moving])(move-towards
+                        [(min 7 (bit-or 0 (/ (.-clientX %) scale-x 16)))
+                         (min 10 (bit-or 0 (/ (.-clientY %) scale-y 16)))]))]
     [:div
      {:on-touch-move #(handle-touch (aget (.-touches %) 0))
       :on-mouse-move handle-touch

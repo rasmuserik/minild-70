@@ -16,7 +16,7 @@
    [cljs.core.async :refer [>! <! chan put! take! timeout close! pipe]]))
 
 (def turn-time 100)
-(db! [:current-level] 2)
+(db! [:current-level] 0)
 (def maps
   [
    ["       "

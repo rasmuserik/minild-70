@@ -1,0 +1,16 @@
+* MiniLD-70 [[https://minild-70.solsort.com/icon-small.png]]
+
+Quick game prototype for [[http://ludumdare.com/compo/2016/09/05/mini-ld-70-determinism/][Mini Ludum Dare 70]], with theme: determinism.
+
+Ludum Dare entry: http://ludumdare.com/compo/ludum-dare-70/?uid=.....
+
+Try it online on https://minild-70.solsort.com/.
+
+I went for the usual Ludum Dare compo rules: 48 hours, single person, no premade assets, etc.
+
+The graphics is designed, such that the game could be ported to the pebble smartwatch later on. I.e. black and white, and a resolution smaller than 144x168. And focus has been on mobile interaction.
+
+Tools used:
+
+- ClojureScript (reagent)
+- Gimp

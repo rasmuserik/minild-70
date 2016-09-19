@@ -56,14 +56,23 @@
   )
 
 (defn move-towards [pos]
-  (let [prev-pos (last (db [:path] [[3 7]]))
-        [px py] prev-pos
-        [dx dy] (v- pos prev-pos)
-        new-pos (if (< (js/Math.abs dy) (js/Math.abs dx))
-                  [(+ (js/Math.sign dx) px) py]
-                  [px (+ (js/Math.sign dy) py)]
-                  )]
-       (db-async! [:pos] new-pos))
+  (while (not= pos (last (db [:path])))
+      (let [path (db [:path] [[3 7]])
+         prev-pos (last path)
+         [px py] prev-pos
+         [dx dy] (v- pos prev-pos)
+         new-pos (if (< (js/Math.abs dy) (js/Math.abs dx))
+                   [(+ (js/Math.sign dx) px) py]
+                   [px (+ (js/Math.sign dy) py)]
+                   )
+         dup-idx (.indexOf path new-pos)
+         path (if (= -1 dup-idx) path
+                  (subvec path 0 dup-idx))
+         path (conj path new-pos)
+         ]
+     (db! [:path] path)
+                                        ; (db-async! [:pos] new-pos)
+     ))
   )
 (defn add-route [pos]
   (move-towards pos)
@@ -115,4 +124,5 @@
      (enemies)
      ]])
   )
+(.indexOf ['foo 'bar 'baz] 'bar)
 (render [:div [main]])

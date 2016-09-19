@@ -4,6 +4,7 @@
    [reagent.ratom :as ratom :refer  [reaction]])
   (:require
    [cljs.reader]
+   [solsort.toolbox.setup]
    [solsort.toolbox.appdb :refer [db db! db-async!]]
    [solsort.toolbox.ui :refer [input select]]
    [solsort.util
@@ -15,10 +16,46 @@
    [cljs.core.async :refer [>! <! chan put! take! timeout close! pipe]]
    ))
 
+(def maps
+  [["   x   "
+    "  v   <"
+    "       "
+    "  bb   "
+    "  b    "
+    "bbb>   "
+    "       "
+    "  bbbb "
+    "     b "
+    "   o   "
+    ]])
+(defn load-map [n]
+  (let [level (atom [])]
+  (doall
+   (for [y (range 10)
+         x (range 7)
+         symb (aget (nth (nth maps n) y) x)]
+     (let [add #(swap! level conj (into % {:id [x y] :pos [x y]}))]
+       (log 'here x y symb)
+      (case symb
+        "b" (add {:type :block})
+        ">" (add {:type :enemy0 :direction :right})
+        "<" (add {:type :enemy0 :direction :left})
+        "^" (add {:type :enemy0 :direction :up})
+        "v" (add {:type :enemy0 :direction :down})
+        "o" (add {:type :player})
+        "x" (add {:type :goal})
+        nil
+        ))))
+  (db! [:level] @level)
+  ))
+(load-map 0)
+(log (db [:level]))
 (load-style!
  {:body
   {:background :black}})
-(db! [:path] [[3 9] [3 8] [3 7] [2 7] [2 8] [1 8] [1 7] [1 6] [2 6] [3 6] [4 6]])
+(defn player-pos []
+  (:pos (first (filter #(= :player (:type %)) (db [:level])))))
+(db! [:path] [(player-pos)])
 
 (defn v- [[x0 y0] [x1 y1]] [(- x0 x1) (- y0 y1)])
 (defn v+ [[x0 y0] [x1 y1]] [(+ x0 x1) (+ y0 y1)])
@@ -49,11 +86,6 @@
                    (first next)
                    (rest next)))))
   )
-(defn enemies []
-  (into [:div] (map #(img "enemy0" %)
-        [[1 3] [2 6] [0 4] [2 4] [4 1] [6 2]]
-        ))
-  )
 
 (defn move-towards [pos]
   (loop []
@@ -71,34 +103,22 @@
          path (conj path new-pos)
          ]
      (when
-       (not (some #{new-pos} (db [:blocks])))
+         (not (some #{new-pos}
+                    (map
+                     :pos
+                     (filter #(= :block (:type %)) (db [:level])))))
        (db! [:path] path)
        (when (not= pos (last (db [:path])))
-         (recur))
-         )
-                                        ; (db-async! [:pos] new-pos)
-     ))
-  )
-(defn add-route [pos]
-  (move-towards pos)
- ; (db! [:pos] pos)
-  )
-(db! [:blocks] [[3 3] [3 4] [3 5] [4 5] [5 6]])
-(db! [:pos] [3 9])
-(defn blocks []
-  (into [:div]
-        (map #(img "block" %) (db [:blocks]))))
+         (recur))))))
+
 (defn main []
   (let [scale-y (/ js/innerHeight 160)
         scale-x (min (* 1.2 scale-y) (/ js/innerWidth 112))
-        handle-touch #(add-route
+        handle-touch #(move-towards
                        [(min 7 (bit-or 0 (/ (.-clientX %) scale-x 16)))
-                                  (min 10 (bit-or 0 (/ (.-clientY %) scale-y 16)))]
-                                 )
-        ]
+                                  (min 10 (bit-or 0 (/ (.-clientY %) scale-y 16)))])]
    [:div
-    {
-     :on-touch-move #(handle-touch (aget (.-touches %) 0))
+    {:on-touch-move #(handle-touch (aget (.-touches %) 0))
      :on-mouse-move handle-touch
      :style
      {:display :inline-block
@@ -129,11 +149,7 @@
               ;:background-color :white
               :background-image "url(\"assets/background.png\")"}}
      [draw-route]
-     [blocks]
-     (img "goal" [3 0])
-     (img "player" (db [:pos])) 
-     (enemies)
-     ]])
-  )
-(.indexOf ['foo 'bar 'baz] 'bar)
+     (into [:div]
+           (for [obj (db [:level])]
+             (img (name (:type obj)) (:pos obj))))]]))
 (render [:div [main]])

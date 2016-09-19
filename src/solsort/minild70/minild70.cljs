@@ -15,45 +15,101 @@
    [clojure.string :as string :refer [replace split blank?]]
    [cljs.core.async :refer [>! <! chan put! take! timeout close! pipe]]))
 
-(def turn-time 150)
-(def maps  [["   x   "
-    "  v   "
-    "b    <b"
-    "  b    "
-    "  b    "
-    "bbb    "
+(def turn-time 100)
+(db! [:current-level] 2)
+(def maps
+  [
+   ["       "
     "       "
-    "  b bb "
+    "     x "
     "       "
-    "   o   "]])
-(defn load-map [n]
-  (let [level (atom [])]
+    "       "
+    "       "
+    "       "
+    " o     "
+    "       "
+    "       "]
+   ["   x   "
+    "       "
+    "      <"
+    "      <"
+    "      <"
+    "      <"
+    "      <"
+    "      <"
+    "       "
+    "   o   "]
+   ["   bbbx"
+    " b b   "
+    " b b b "
+    " b   b "
+    " bbbbbb"
+    "       "
+    "bbbbbb "
+    "     b "
+    " bbb b "
+    "o  b   "]
+   
+   ["   x   "
+    "      v"
+    "      v"
+    "       "
+    "    <<<"
+    "    bb "
+    "    bb "
+    "    b  "
+    "    b  "
+    "   ob  "]
+   [
+    "obbbbbb"
+    "bb   bb"
+    "b     b"
+    "b b b b"
+    "b     b"
+    "b b b b"
+    "b bbb b"
+    "b     b"
+    "bb   bb"
+    "bbbbbbx"]])
+(defn goal-pos [] (:pos (first (filter #(= :goal (:type %)) (db [:level])))))
+(defn player-pos [] (:pos (first (filter #(= :player (:type %)) (db [:level])))))
+(defn load-map []
+  (when (db [:win])
+    (db! [:current-level] (inc (db [:current-level])))
+    (db! [:path] nil)
+    (db! [:win] false))
+  (let [
+        level
+        (atom
+         (into [] (concat
+                    (for [x (range 7)] {:type :block :pos [x -1]})
+                    (for [x (range 7)] {:type :block :pos [x 10]})
+                    (for [y (range 10)] {:type :block :pos [-1 y]})
+                    (for [y (range 10)] {:type :block :pos [7 y]})
+                    )))]
     (doall
      (for [y (range 10)
            x (range 7)
-           symb (aget (nth (nth maps n) y) x)]
+           symb (aget (nth (nth maps (db [:current-level])) y) x)]
        (let [add #(swap! level conj (into % {:id [x y] :pos [x y]}))]
          (case symb
            "b" (add {:type :block})
            ">" (add {:type :glider-lr})
            "<" (add {:type :glider-lr :reverse true})
-           "^" (add {:type :enemy0 :direction :up})
-           "v" (add {:type :enemy0 :direction :down})
+           "^" (add {:type :glider-ud})
+           "v" (add {:type :glider-ud :reverse true})
            "o" (add {:type :player :player true})
            "x" (add {:type :goal})
            nil))))
-    (db! [:level] @level)))
-(load-map 0)
-(log (db [:level]))
+    (db! [:level] @level)
+    (when-not (db [:path]) (db! [:path] [(player-pos)]))))
+(load-map)
 (load-style!
  {:img
   {:transition-timing-function "linear"
    :transition (str "all " turn-time "ms")}
   :body
   {:background :black}})
-(defn goal-pos [] (:pos (first (filter #(= :goal (:type %)) (db [:level])))))
-(defn player-pos [] (:pos (first (filter #(= :player (:type %)) (db [:level])))))
-(db! [:path] [(player-pos)])
 
 (defn v- [[x0 y0] [x1 y1]] [(- x0 x1) (- y0 y1)])
 (defn v+ [[x0 y0] [x1 y1]] [(+ x0 x1) (+ y0 y1)])
@@ -112,11 +168,19 @@
   )
 
 (defn move-entity [o state]
-
   (let [collision (fn [p] (and (get state p)
                                (not= (:id (get state p)) (:id o))))]
    (case (:type o)
-     :enemy0 o
+     :glider-ud 
+     (let [new-pos
+           (if (:reverse o)
+             (v+ (:pos o) [0 -1])
+             (v+ (:pos o) [0 1]))]
+       (if (collision new-pos)
+         (assoc o :reverse (not (:reverse o)))
+         (assoc o :pos new-pos)
+         )
+       )
      :glider-lr 
      (let [new-pos
            (if (:reverse o)
@@ -131,24 +195,28 @@
      :goal o
      :player
      (let [time (get o :time 1)
-           new-pos (nth (db [:path]) time (goal-pos))]
-       (log (get state new-pos))
+           new-pos (nth (db [:path]) time (goal-pos))
+           collision (get state new-pos)]
+       (when collision
+         (db! [:moving] false)
+         (when (= :goal (:type collision))
+           (db! [:win] true)))
        (when (< (count (db [:path]))
                 (get o :time 1))
-         (db-async! [:moving] false))
-       (into o {:time (inc time) :pos new-pos}))))
-  )
+         (db! [:moving] false))
+       (into o {:time (inc time) :pos new-pos})))))
+(db! [:moving] false)
 (defn move []
   (let [prev-state (db [:level])
         coords (into {} (for [o (remove :player prev-state)] [(:pos o) o]))
         next-state (for [o prev-state] (move-entity o coords))
         coords (into coords (for [o (remove :player next-state)] [(:pos o) o]))
-        next-state (for [o prev-state] (move-entity o coords))
-        ]
-    (db! [:level] next-state)
+        next-state (doall (for [o prev-state] (move-entity o coords)))]
+    (when (db [:moving])
+     (db! [:level] next-state))
     (if (db [:moving])
       (js/setTimeout move turn-time)
-      (js/setTimeout #(load-map 0) (* 4 turn-time)))))
+      (js/setTimeout #(load-map) (* 4 turn-time)))))
 
 (defn main []
   (let [scale-y (/ js/innerHeight 160)

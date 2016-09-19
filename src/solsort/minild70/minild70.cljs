@@ -56,7 +56,7 @@
   )
 
 (defn move-towards [pos]
-  (while (not= pos (last (db [:path])))
+  (loop []
       (let [path (db [:path] [[3 7]])
          prev-pos (last path)
          [px py] prev-pos
@@ -70,7 +70,12 @@
                   (subvec path 0 dup-idx))
          path (conj path new-pos)
          ]
-     (db! [:path] path)
+     (when
+       (not (some #{new-pos} (db [:blocks])))
+       (db! [:path] path)
+       (when (not= pos (last (db [:path])))
+         (recur))
+         )
                                         ; (db-async! [:pos] new-pos)
      ))
   )
@@ -78,13 +83,17 @@
   (move-towards pos)
  ; (db! [:pos] pos)
   )
+(db! [:blocks] [[3 3] [3 4] [3 5] [4 5] [5 6]])
 (db! [:pos] [3 9])
+(defn blocks []
+  (into [:div]
+        (map #(img "block" %) (db [:blocks]))))
 (defn main []
   (let [scale-y (/ js/innerHeight 160)
         scale-x (min (* 1.2 scale-y) (/ js/innerWidth 112))
         handle-touch #(add-route
-                                 [(bit-or 0 (/ (.-clientX %) scale-x 16))
-                                  (bit-or 0 (/ (.-clientY %) scale-y 16))]
+                       [(min 7 (bit-or 0 (/ (.-clientX %) scale-x 16)))
+                                  (min 10 (bit-or 0 (/ (.-clientY %) scale-y 16)))]
                                  )
         ]
    [:div
@@ -120,6 +129,8 @@
               ;:background-color :white
               :background-image "url(\"assets/background.png\")"}}
      [draw-route]
+     [blocks]
+     (img "goal" [3 0])
      (img "player" (db [:pos])) 
      (enemies)
      ]])

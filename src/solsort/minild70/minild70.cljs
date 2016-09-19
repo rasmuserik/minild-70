@@ -16,16 +16,15 @@
    [cljs.core.async :refer [>! <! chan put! take! timeout close! pipe]]))
 
 (def turn-time 150)
-(def maps
-  [["   x   "
-    "  v   <"
-    "       "
+(def maps  [["   x   "
+    "  v   "
+    "b    <b"
     "  b    "
     "  b    "
-    "bbb>   "
+    "bbb    "
     "       "
     "  b bb "
-    "     b "
+    "       "
     "   o   "]])
 (defn load-map [n]
   (let [level (atom [])]
@@ -36,11 +35,11 @@
        (let [add #(swap! level conj (into % {:id [x y] :pos [x y]}))]
          (case symb
            "b" (add {:type :block})
-           ">" (add {:type :glider-lr :direction :right})
-           "<" (add {:type :glider-lr :direction :left})
+           ">" (add {:type :glider-lr})
+           "<" (add {:type :glider-lr :reverse true})
            "^" (add {:type :enemy0 :direction :up})
            "v" (add {:type :enemy0 :direction :down})
-           "o" (add {:type :player})
+           "o" (add {:type :player :player true})
            "x" (add {:type :goal})
            nil))))
     (db! [:level] @level)))
@@ -112,39 +111,44 @@
     (move))
   )
 
-(defn move []
-  (db!
-   [:level]
-   (for [o (db [:level])]
-     (case (:type o)
-       :enemy0 o
-       :glider-lr 
-       (if (= :left (:direction o))
-         (assoc o :pos (v+ (:pos o) [-1 0]))
-         (assoc o :pos (v+ (:pos o) [1 0]))
+(defn move-entity [o state]
+
+  (let [collision (fn [p] (and (get state p)
+                               (not= (:id (get state p)) (:id o))))]
+   (case (:type o)
+     :enemy0 o
+     :glider-lr 
+     (let [new-pos
+           (if (:reverse o)
+             (v+ (:pos o) [-1 0])
+             (v+ (:pos o) [1 0]))]
+       (if (collision new-pos)
+         (assoc o :reverse (not (:reverse o)))
+         (assoc o :pos new-pos)
          )
-       :block o
-       :goal o
-       :player
-       (do
-         (log 'player
-              (count (db [:path]))
-              (get o :time 1)
-              (db [:moving]))
-         (when (< (count (db [:path]))
-                  (get o :time 1))
-           (db-async! [:moving] false))
-         (log 'player
-              (count (db [:path]))
-              (get o :time 1)
-              (db [:moving]))
-         (into o
-              {:time (inc (get o :time 1))
-               :pos (nth (db [:path]) (get o :time 1) (goal-pos))})))))
-  (if (db [:moving])
-    (js/setTimeout move turn-time)
-    (js/setTimeout #(load-map 0) (* 4 turn-time)))
+       )
+     :block o
+     :goal o
+     :player
+     (let [time (get o :time 1)
+           new-pos (nth (db [:path]) time (goal-pos))]
+       (log (get state new-pos))
+       (when (< (count (db [:path]))
+                (get o :time 1))
+         (db-async! [:moving] false))
+       (into o {:time (inc time) :pos new-pos}))))
   )
+(defn move []
+  (let [prev-state (db [:level])
+        coords (into {} (for [o (remove :player prev-state)] [(:pos o) o]))
+        next-state (for [o prev-state] (move-entity o coords))
+        coords (into coords (for [o (remove :player next-state)] [(:pos o) o]))
+        next-state (for [o prev-state] (move-entity o coords))
+        ]
+    (db! [:level] next-state)
+    (if (db [:moving])
+      (js/setTimeout move turn-time)
+      (js/setTimeout #(load-map 0) (* 4 turn-time)))))
 
 (defn main []
   (let [scale-y (/ js/innerHeight 160)

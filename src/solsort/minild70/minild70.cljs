@@ -16,7 +16,7 @@
    [cljs.core.async :refer [>! <! chan put! take! timeout close! pipe]]))
 
 (def turn-time 100)
-(db! [:current-level] 6)
+(db! [:current-level] 0)
 (def maps
   [["       "
     "       "
@@ -93,6 +93,7 @@
 (defn player-pos [] (:pos (first (filter #(= :player (:type %)) (db [:level])))))
 (defn load-map []
   (when (db [:win])
+    (log (db))
     (db! [:current-level] (inc (db [:current-level])))
     (db! [:path] nil)
     (db! [:win] false))
@@ -125,6 +126,8 @@
 (load-style!
  {:img
   {:transition-timing-function "linear"
+   :-ms-interpolation-mode "nearest-neighbor" 
+   :image-rendering "-moz-crisp-edges"
    :transition (str "all " turn-time "ms")}
   :body
   {:background :black}})
@@ -213,7 +216,7 @@
      :goal o
      :player
      (let [time (get o :time 1)
-           new-pos (nth (db [:path]) time (goal-pos))
+           new-pos (nth (db [:path]) time (player-pos))
            collision (get state new-pos)]
        (when collision
          (db! [:moving] false)

@@ -6,7 +6,7 @@ Ludum Dare entry: http://ludumdare.com/compo/minild-70/?uid=14058
 
 Try it online on https://minild-70.solsort.com/.
 
-----
+-----
 
 Show the smiley the way to walk through the dungeon.
 

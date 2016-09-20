@@ -16,10 +16,9 @@
    [cljs.core.async :refer [>! <! chan put! take! timeout close! pipe]]))
 
 (def turn-time 100)
-(db! [:current-level] 0)
+(db! [:current-level] 6)
 (def maps
-  [
-   ["       "
+  [["       "
     "       "
     "     x "
     "       "
@@ -49,7 +48,6 @@
     "     b "
     " bbb b "
     "o  b   "]
-   
    ["   x   "
     "      v"
     "      v"
@@ -60,17 +58,37 @@
     "    b  "
     "    b  "
     "   ob  "]
-   [
-    "obbbbbb"
-    "bb   bb"
+   [" bbbbbb"
+    "bb  xbb"
     "b     b"
-    "b b b b"
+    "b > < b"
     "b     b"
-    "b b b b"
+    "b > < b"
     "b bbb b"
-    "b     b"
+    "b  o  b"
     "bb   bb"
-    "bbbbbbx"]])
+    " bbbbb "]
+    [" vv^b^x"
+     "    b b"
+     "    b  "
+     "    b  "
+     "       "
+     "       "
+     "     <<"
+     ">>     "
+     "       "
+     "o      "]
+   ["ov>   x"
+    "    b b"
+    " ^b   b"
+    "      b"
+    " vb b b"
+    "     ^b"
+    " vbbb  "
+    "       "
+    " vbbb  "
+    "       "]
+    ])
 (defn goal-pos [] (:pos (first (filter #(= :goal (:type %)) (db [:level])))))
 (defn player-pos [] (:pos (first (filter #(= :player (:type %)) (db [:level])))))
 (defn load-map []
@@ -102,7 +120,7 @@
            "x" (add {:type :goal})
            nil))))
     (db! [:level] @level)
-    (when-not (db [:path]) (db! [:path] [(player-pos)]))))
+    (db! [:path] [(player-pos)])))
 (load-map)
 (load-style!
  {:img
@@ -224,35 +242,54 @@
         handle-touch #(when-not (db [:moving])(move-towards
                         [(min 7 (bit-or 0 (/ (.-clientX %) scale-x 16)))
                          (min 10 (bit-or 0 (/ (.-clientY %) scale-y 16)))]))]
-    [:div
-     {:on-touch-move #(handle-touch (aget (.-touches %) 0))
-      :on-mouse-move handle-touch
-      :style
-      {:display :inline-block
-       :margin 0
-       :padding 0
-       :height 159
-       :width 111
-       :overflow :hidden
-       :transform
-       (str "matrix("
-            (apply str
-                   (interpose
-                    ","
-                    [scale-x 0 0 scale-y
-                     (- (* 56 scale-x) 56)
-                     (- (* 80 scale-y) 80)]))
-            ")")
-       :background :gray}}
+    (if (<= (count maps) (db [:current-level]))
+      [:div
+       {:style
+        {:display :inline-block
+         :height js/window.innerHeight
+         :width js/window.innerWidth
+         :text-align "center"
+         :position :absolute
+         :background :white
+                }}
+       [:h1 {:style {:margin-top "20%"}} "You won!"]
+       [:input {:type :submit
+                :value "Play Again"
+                :on-click
+                #(do
+                   (db! [:current-level] 0)
+                   (load-map))}]
+       ]
+
      [:div
-      {:style {:display :inline-block
-               :height 160
-               :width 112
-               :image-rendering "pixelated"
-              ;:background-color :white
-               :background-image "url(\"assets/background.png\")"}}
-      [draw-route]
-      (into [:div]
-            (for [obj (db [:level])]
-              (img (name (:type obj)) (:pos obj))))]]))
+      {:on-touch-move #(handle-touch (aget (.-touches %) 0))
+       :on-mouse-move handle-touch
+       :style
+       {:display :inline-block
+        :margin 0
+        :padding 0
+        :height 159
+        :width 111
+        :overflow :hidden
+        :transform
+        (str "matrix("
+             (apply str
+                    (interpose
+                     ","
+                     [scale-x 0 0 scale-y
+                      (- (* 56 scale-x) 56)
+                      (- (* 80 scale-y) 80)]))
+             ")")
+        :background :gray}}
+      [:div
+       {:style {:display :inline-block
+                :height 160
+                :width 112
+                :image-rendering "pixelated"
+                                        ;:background-color :white
+                :background-image "url(\"assets/background.png\")"}}
+       [draw-route]
+       (into [:div]
+             (for [obj (db [:level])]
+               (img (name (:type obj)) (:pos obj))))]])))
 (render [:div [main]])
